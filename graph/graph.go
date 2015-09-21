@@ -10,7 +10,30 @@ type Graph struct {
 
 type Node struct {
 	name string
+	C    Color
 	Adj  map[string]*Node
+}
+
+type Color int
+
+const (
+	Blank Color = iota
+	Blue
+	Yellow
+	Red
+	Green
+)
+
+var ColorNames = [...]string{
+	"Sem cor",
+	"Azul",
+	"Amarelo",
+	"Vermelho",
+	"Verde",
+}
+
+func (c Color) String() string {
+	return ColorNames[c]
 }
 
 func NewNode(name string) *Node {
@@ -25,7 +48,7 @@ func (g *Graph) GetByName(name string) *Node {
 	return g.Map[name]
 }
 
-func (n *Node) Connect(dest *Node, bidi bool) error {
+func (n *Node) Connect(dest *Node, bidirectional bool) error {
 	if dest == nil {
 		return errors.New("Can't connect to nil node " + dest.Name())
 	}
@@ -35,7 +58,7 @@ func (n *Node) Connect(dest *Node, bidi bool) error {
 	}
 
 	n.Adj[dest.Name()] = dest
-	if bidi {
+	if bidirectional {
 		dest.Connect(n, false)
 	}
 	return nil
