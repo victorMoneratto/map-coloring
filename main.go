@@ -2,35 +2,58 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/victormoneratto/map-coloring/graph"
 )
 
+//Heuristic flag enum
 const (
 	NoHeuristic = 'a' + iota
+	MRVOnly
+	MRVandDegree
+	AllHeuristics
 )
 
 func main() {
-	// cfg := profile.Config{MemProfile: true, ProfilePath: "."}
+	// profiler settings
+	// cfg := profile.Config{ProfilePath: ".",
+	// CPUProfile: true,
+	// MemProfile: true,
+	// }
 	// defer profile.Start(&cfg).Stop()
 
-	//heuristic leve flag
+	//heuristic level flag
 	heuristicLevel := rune((*flag.String("heuristic", " ", "a, b, c or d"))[0])
+	//input file flag
+	inputFile := flag.String("file", "", "filename of input file, standard input for default")
 	flag.Parse()
 
-	//read file and populate graph
-	graphDescription := parseInputFile("input/usa.in", &heuristicLevel)
+	var file *os.File
+	if *inputFile != "" {
+		var err error
+		file, err = os.Open(*inputFile)
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		file = os.Stdin
+	}
+
+	//parse input file
+	graphDescription := parseInputFile(file, &heuristicLevel)
+	file.Close()
+
+	//populate graph
 	g := graph.NewGraph(len(graphDescription))
 	populateGraph(g, graphDescription)
 
 	// perform backtracking
-	colorMap(g)
 	if colorMap(g) {
 		for _, node := range g.Nodes {
 			fmt.Println(node.Name()+":", node.C)
@@ -63,94 +86,95 @@ func populateGraph(g *graph.Graph, graphDescription [][]string) {
 
 // cache for backtrack
 type BacktrackCache struct {
-	TakenColors []bool
+	TakenColors [][]int
 }
 
 // arrange map coloring backtrack algorithm
 func colorMap(g *graph.Graph) bool {
-	cache := make([]BacktrackCache, len(g.Nodes))
+	cache := &BacktrackCache{TakenColors: make([][]int, len(g.Nodes))}
 	for i := 0; i < len(g.Nodes); i++ {
-		cache[i].TakenColors = make([]bool, len(graph.ColorNames))
+		cache.TakenColors[i] = make([]int, len(graph.ColorNames))
 	}
 	return colorMapBacktrack(g, cache, 0)
 }
 
 // recursive map coloring (backtrack)
-func colorMapBacktrack(g *graph.Graph, cache []BacktrackCache, height int) bool {
+func colorMapBacktrack(g *graph.Graph, cache *BacktrackCache, height int) bool {
 
 	// have all nodes been colored?
 	if height == len(g.Nodes) {
 		return true
 	}
 
-	takenColors := takenColors(g, cache, height)
-
-	// for each color this node can take
-	for color := graph.Color(graph.Blank + 1); int(color) < len(takenColors); color++ {
-		if !takenColors[color] {
-			g.Nodes[height].C = color
+	// for each color
+	for color := graph.Color(graph.Blank + 1); int(color) < len(graph.ColorNames); color++ {
+		//can we use it?
+		if cache.TakenColors[height][color] == 0 {
+			updateColorAndAdj(g, cache, height, color)
+			//proceed with backtrack recursion
 			if colorMapBacktrack(g, cache, height+1) {
 				return true
 			}
 		}
 	}
 
-	g.Nodes[height].C = graph.Blank
+	// reset color and ajacents
+	updateColorAndAdj(g, cache, height, graph.Blank)
 	return false
 }
 
-// returns array where true represents a taken color, false otherwise
-func takenColors(g *graph.Graph, cache []BacktrackCache, nodeIndex int) []bool {
-	for i := range graph.ColorNames {
-		cache[nodeIndex].TakenColors[i] = false
+// update node color and cache values for it's adjacents
+func updateColorAndAdj(g *graph.Graph, cache *BacktrackCache, nodeIndex int, newColor graph.Color) {
+	prevColor := g.Nodes[nodeIndex].C
+	for _, value := range g.Nodes[nodeIndex].Adj {
+		cache.TakenColors[value][newColor]++
+		cache.TakenColors[value][prevColor]--
 	}
 
-	for _, destIndex := range g.Nodes[nodeIndex].Adj {
-		dest := &g.Nodes[destIndex]
-		cache[nodeIndex].TakenColors[dest.C] = true
-	}
-
-	return cache[nodeIndex].TakenColors
+	g.Nodes[nodeIndex].C = newColor
 }
 
 // Parse input file to [][]string of the format:
 // [
-// [src1 dst1 dst2... dstn]
+// [src1 dst1 dst2... dstn][value]z
 // ...
 // [src2 dst4 dst1... dstm]
 // ]
 // where each node is src once and many dst can connect to it
-func parseInputFile(filename string, heuristic *rune) [][]string {
-	file, err := os.Open(filename)
-	defer file.Close()
+func parseInputFile(file *os.File, heuristic *rune) [][]string {
+	buffer := bufio.NewReader(file)
+
+	//read first line
+	line, err := buffer.ReadString('\n')
 	if err != nil {
-		panic(err)
+		panic(errors.New("File out of format: " + err.Error()))
 	}
 
-	buffer := bufio.NewReader(file)
-	firstLine, err := buffer.ReadString('\n')
-	if err != nil {
-		panic(err)
-	}
-	fields := strings.Fields(firstLine)
+	//first line is numberOfLines OptionalHeuristicOverride
+	fields := strings.Fields(line)
 	nodesCount, err := strconv.Atoi(fields[0])
 	if err != nil {
-		panic(err)
+		panic(errors.New("File out of format: " + err.Error()))
 	}
+
 	if len(fields) > 1 && *heuristic == ' ' {
 		*heuristic = rune(fields[1][0])
 	}
 
 	ret := make([][]string, nodesCount)
 
-	statesExp := regexp.MustCompile("(?:([^,:]*))(?:[,|.|:]) *")
-
+	//for each line as predefined
 	for i := 0; i < nodesCount; i++ {
-		line, _ := buffer.ReadString('\n')
-		submatches := statesExp.FindAllStringSubmatch(line, nodesCount-1)
-		ret[i] = make([]string, 0, len(submatches))
-		for _, name := range submatches {
-			ret[i] = append(ret[i], name[1])
+		// read line and split by ': or ',' or '.'
+		line, _ = buffer.ReadString('\n')
+		fields := strings.FieldsFunc(line, func(r rune) bool {
+			return r == ',' || r == ':' || r == '.' || r == '\n'
+		})
+
+		// allocate string slice and store elements from the line
+		ret[i] = make([]string, 0, len(fields))
+		for _, field := range fields {
+			ret[i] = append(ret[i], strings.TrimSpace(field))
 		}
 	}
 
