@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"container/heap"
 	"errors"
 	"flag"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/victormoneratto/map-coloring/graph"
+	nh "github.com/victormoneratto/map-coloring/heap"
 )
 
 //Heuristic flag enum
@@ -20,6 +22,8 @@ const (
 	AllHeuristics
 )
 
+var heuristic rune
+
 func main() {
 	// profiler settings
 	// cfg := profile.Config{ProfilePath: ".",
@@ -29,10 +33,12 @@ func main() {
 	// defer profile.Start(&cfg).Stop()
 
 	//heuristic level flag
-	heuristicLevel := rune((*flag.String("heuristic", " ", "a, b, c or d"))[0])
+	heuristicString := flag.String("heuristic", "a", "a, b, c or d")
 	//input file flag
 	inputFile := flag.String("file", "", "filename of input file, standard input for default")
 	flag.Parse()
+
+	heuristic = rune((*heuristicString)[0])
 
 	var file *os.File
 	if *inputFile != "" {
@@ -46,16 +52,15 @@ func main() {
 	}
 
 	//parse input file
-	graphDescription := parseInputFile(file, &heuristicLevel)
+	graphDescription := parseInputFile(file)
 	file.Close()
 
 	//populate graph
 	g := graph.NewGraph(len(graphDescription))
-	populateGraph(g, graphDescription)
-
+	populateGraph(&g, graphDescription)
 	// perform backtracking
 	if colorMap(g) {
-		for _, node := range g.Nodes {
+		for _, node := range g {
 			fmt.Println(node.Name()+":", node.C)
 		}
 	} else {
@@ -64,14 +69,14 @@ func main() {
 }
 
 func populateGraph(g *graph.Graph, graphDescription [][]string) {
-	nodesMap := make(map[string]int)
+	nodesMap := make(map[string]*graph.Node)
 
 	// create all nodes (each is src once)
 	for _, nodeDescription := range graphDescription {
 		srcName := nodeDescription[0]
 		node := graph.NewNode(srcName)
-		g.Nodes = append(g.Nodes, node)
-		nodesMap[srcName] = len(g.Nodes) - 1
+		*g = append(*g, node)
+		nodesMap[srcName] = node
 	}
 
 	// connect srcs and dests
@@ -79,59 +84,95 @@ func populateGraph(g *graph.Graph, graphDescription [][]string) {
 		src := nodesMap[nodeDescription[0]]
 		for _, destName := range nodeDescription[1:] {
 			dest := nodesMap[destName]
-			g.Nodes[src].Connect(dest)
+			src.Connect(dest)
 		}
 	}
 }
 
-// cache for backtrack
-type BacktrackCache struct {
-	TakenColors [][]int
-}
-
 // arrange map coloring backtrack algorithm
-func colorMap(g *graph.Graph) bool {
-	cache := &BacktrackCache{TakenColors: make([][]int, len(g.Nodes))}
-	for i := 0; i < len(g.Nodes); i++ {
-		cache.TakenColors[i] = make([]int, len(graph.ColorNames))
+func colorMap(g graph.Graph) bool {
+	var h nh.NodeHeap
+	if heuristic >= MRVOnly {
+		h = nh.NewNodeHeap(len(g), heuristic >= MRVandDegree)
+		for _, n := range g {
+			h.Items = append(h.Items, nh.NewNodeItem(n))
+		}
+		heap.Init(&h)
 	}
-	return colorMapBacktrack(g, cache, 0)
+	return colorMapBacktrack(g, 0, &h)
 }
 
 // recursive map coloring (backtrack)
-func colorMapBacktrack(g *graph.Graph, cache *BacktrackCache, height int) bool {
+func colorMapBacktrack(g graph.Graph, height int, h *nh.NodeHeap) bool {
 
 	// have all nodes been colored?
-	if height == len(g.Nodes) {
+	if height == len(g) {
 		return true
 	}
 
+	// current node
+	var node *graph.Node
+	if heuristic >= MRVOnly {
+		node = heap.Pop(h).(*nh.NodeItem).Node
+	} else {
+		node = g[height]
+	}
+
 	// for each color
-	for color := graph.Color(graph.Blank + 1); int(color) < len(graph.ColorNames); color++ {
+	for color := graph.Color(graph.Blank + 1); int(color) < graph.NumColors; color++ {
 		//can we use it?
-		if cache.TakenColors[height][color] == 0 {
-			updateColorAndAdj(g, cache, height, color)
+		if node.TakenColors[color] == 0 {
+			updateColorAndAdj(node, color, h)
 			//proceed with backtrack recursion
-			if colorMapBacktrack(g, cache, height+1) {
+			if colorMapBacktrack(g, height+1, h) {
 				return true
 			}
 		}
 	}
 
 	// reset color and ajacents
-	updateColorAndAdj(g, cache, height, graph.Blank)
+	if heuristic >= MRVOnly {
+		heap.Push(h, nh.NewNodeItem(node))
+	}
+	updateColorAndAdj(node, graph.Blank, h)
 	return false
 }
 
 // update node color and cache values for it's adjacents
-func updateColorAndAdj(g *graph.Graph, cache *BacktrackCache, nodeIndex int, newColor graph.Color) {
-	prevColor := g.Nodes[nodeIndex].C
-	for _, value := range g.Nodes[nodeIndex].Adj {
-		cache.TakenColors[value][newColor]++
-		cache.TakenColors[value][prevColor]--
+func updateColorAndAdj(node *graph.Node, newColor graph.Color, h *nh.NodeHeap) {
+	prevColor := node.C
+
+	for _, adj := range node.Adj {
+		if heuristic >= MRVOnly {
+			updateTakenColors(adj, prevColor, newColor)
+		}
+		adj.TakenColors[newColor]++
+		adj.TakenColors[prevColor]--
 	}
 
-	g.Nodes[nodeIndex].C = newColor
+	node.C = newColor
+
+	if heuristic >= MRVOnly {
+		heap.Init(h)
+	}
+}
+
+func updateTakenColors(adj *graph.Node, prevColor, newColor graph.Color) {
+	//if node was blank
+	if prevColor == graph.Blank {
+		//node is the only neighbor this color
+		if adj.TakenColors[newColor] == 0 {
+			adj.NumTaken++
+		}
+		//inc taken color for new color
+
+		// if node is losing color
+	} else if newColor == graph.Blank {
+		// node was the only neighbor that color
+		if adj.TakenColors[prevColor] == 1 {
+			adj.NumTaken--
+		}
+	}
 }
 
 // Parse input file to [][]string of the format:
@@ -141,7 +182,7 @@ func updateColorAndAdj(g *graph.Graph, cache *BacktrackCache, nodeIndex int, new
 // [src2 dst4 dst1... dstm]
 // ]
 // where each node is src once and many dst can connect to it
-func parseInputFile(file *os.File, heuristic *rune) [][]string {
+func parseInputFile(file *os.File) [][]string {
 	buffer := bufio.NewReader(file)
 
 	//read first line
@@ -157,8 +198,8 @@ func parseInputFile(file *os.File, heuristic *rune) [][]string {
 		panic(errors.New("File out of format: " + err.Error()))
 	}
 
-	if len(fields) > 1 && *heuristic == ' ' {
-		*heuristic = rune(fields[1][0])
+	if len(fields) > 1 {
+		heuristic = rune(fields[1][0])
 	}
 
 	ret := make([][]string, nodesCount)

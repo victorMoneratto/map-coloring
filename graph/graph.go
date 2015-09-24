@@ -1,13 +1,14 @@
 package graph
 
-type Graph struct {
-	Nodes []Node
-}
+type Graph []*Node
 
 type Node struct {
-	name string
-	C    Color
-	Adj  []int
+	name        string
+	C           Color
+	Adj         []*Node
+	TakenColors []int
+	NumTaken    int
+	Degree      int
 }
 
 type Color int
@@ -28,27 +29,30 @@ var ColorNames = [...]string{
 	"Verde",
 }
 
+const NumColors = len(ColorNames)
+
 func (c Color) String() string {
 	return ColorNames[c]
 }
 
-func NewNode(name string) Node {
-	return Node{name: name}
+func NewNode(name string) *Node {
+	return &Node{name: name, TakenColors: make([]int, NumColors)}
 }
 
 func (n Node) Name() string {
 	return n.name
 }
 
-func (n *Node) Connect(dest int) {
+func (n *Node) Connect(dest *Node) {
 	const initialCap int = 3
 	if n.Adj == nil {
-		n.Adj = make([]int, 0, initialCap)
+		n.Adj = make([]*Node, 0, initialCap)
 	}
 
 	n.Adj = append(n.Adj, dest)
+	n.Degree++
 }
 
-func NewGraph(initialCount int) *Graph {
-	return &Graph{Nodes: make([]Node, 0, initialCount)}
+func NewGraph(initialCount int) Graph {
+	return make([]*Node, 0, initialCount)
 }
