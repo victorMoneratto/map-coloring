@@ -1,57 +1,98 @@
 package heap
 
-import "github.com/victormoneratto/map-coloring/graph"
+import (
+	"container/heap"
 
-type NodeHeap struct {
-	Items     []*NodeItem
+	"github.com/victormoneratto/map-coloring/graph"
+)
+
+type Heap struct {
+	Items     []Heaper
 	UseDegree bool
 }
 
-func NewNodeHeap(initialCap int, useDegree bool) NodeHeap {
-	return NodeHeap{
-		Items:     make([]*NodeItem, 0, initialCap),
+type Heaper interface {
+	Less(h Heap, other Heaper) bool
+}
+
+type NodeItem struct {
+	Node *graph.Node
+}
+
+func NewNodeItem(n *graph.Node) NodeItem {
+	return NodeItem{Node: n}
+}
+
+func (this NodeItem) Less(h Heap, other Heaper) bool {
+	b := other.(NodeItem)
+	switch {
+	case this.Node.NumTaken > b.Node.NumTaken:
+		return true
+	case this.Node.NumTaken < b.Node.NumTaken:
+		return false
+	default:
+		return h.UseDegree && this.Node.Degree > b.Node.Degree
+	}
+}
+
+func NewNodeHeap(initialCap int, useDegree bool) Heap {
+	return Heap{
+		Items:     make([]Heaper, 0, initialCap),
 		UseDegree: useDegree,
 	}
 }
 
-type NodeItem struct {
-	Node  *graph.Node
-	Index int
+type ColorItem struct {
+	Color    graph.Color
+	Priority int
 }
 
-func NewNodeItem(n *graph.Node) *NodeItem {
-	return &NodeItem{Node: n}
+func (this ColorItem) Less(h Heap, other Heaper) bool {
+	b := other.(ColorItem)
+	return this.Priority > b.Priority
 }
 
-func (h NodeHeap) Len() int {
+func NewColorHeap(src *graph.Node) Heap {
+	items := make([]int, graph.NumColors-1)
+	for _, adj := range src.Adj {
+		if adj.C == graph.Blank {
+			for i := graph.Blank + 1; i < graph.NumColors; i++ {
+				items[i-1] += adj.TakenColors[i]
+			}
+		}
+	}
+
+	h := Heap{Items: make([]Heaper, graph.NumColors-1)}
+	for i := int(graph.Blank + 1); i < graph.NumColors; i++ {
+		h.Items[i-1] = ColorItem{
+			Color:    graph.Color(i),
+			Priority: items[i-1],
+		}
+	}
+
+	heap.Init(&h)
+	return h
+}
+
+func (h Heap) Len() int {
 	return len(h.Items)
 }
 
-func (h NodeHeap) Less(i, j int) bool {
-	a, b := h.Items[i].Node, h.Items[j].Node
-	switch {
-	case a.NumTaken > b.NumTaken:
-		return true
-	case a.NumTaken < b.NumTaken:
-		return false
-	default:
-		return h.UseDegree && a.Degree > b.Degree
-	}
+func (h Heap) Less(i, j int) bool {
+	a, b := h.Items[i], h.Items[j]
+	return a.Less(h, b)
 }
 
-func (h NodeHeap) Swap(i, j int) {
+func (h Heap) Swap(i, j int) {
 	h.Items[i], h.Items[j] = h.Items[j], h.Items[i]
-	h.Items[i].Index = i
-	h.Items[j].Index = j
 }
 
-func (h *NodeHeap) Push(x interface{}) {
-	item := x.(*NodeItem)
-	item.Index = h.Len()
+func (h *Heap) Push(x interface{}) {
+	item := x.(Heaper)
 	h.Items = append(h.Items, item)
 }
 
-func (h *NodeHeap) Pop() interface{} {
+func (h *Heap) Pop() interface{} {
 	old := h.Items
 	n := len(old)
 	x := old[n-1]

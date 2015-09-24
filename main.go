@@ -19,7 +19,7 @@ const (
 	NoHeuristic = 'a' + iota
 	MRVOnly
 	MRVandDegree
-	AllHeuristics
+	MRVDegreeAndLCV
 )
 
 var heuristic rune
@@ -91,7 +91,7 @@ func populateGraph(g *graph.Graph, graphDescription [][]string) {
 
 // arrange map coloring backtrack algorithm
 func colorMap(g graph.Graph) bool {
-	var h nh.NodeHeap
+	var h nh.Heap
 	if heuristic >= MRVOnly {
 		h = nh.NewNodeHeap(len(g), heuristic >= MRVandDegree)
 		for _, n := range g {
@@ -103,8 +103,7 @@ func colorMap(g graph.Graph) bool {
 }
 
 // recursive map coloring (backtrack)
-func colorMapBacktrack(g graph.Graph, height int, h *nh.NodeHeap) bool {
-
+func colorMapBacktrack(g graph.Graph, height int, h *nh.Heap) bool {
 	// have all nodes been colored?
 	if height == len(g) {
 		return true
@@ -113,15 +112,29 @@ func colorMapBacktrack(g graph.Graph, height int, h *nh.NodeHeap) bool {
 	// current node
 	var node *graph.Node
 	if heuristic >= MRVOnly {
-		node = heap.Pop(h).(*nh.NodeItem).Node
+		node = heap.Pop(h).(nh.NodeItem).Node
 	} else {
 		node = g[height]
 	}
 
+	colors := make([]graph.Color, 0, graph.NumColors-1)
+	if heuristic >= MRVDegreeAndLCV {
+		colorHeap := nh.NewColorHeap(node)
+		for colorHeap.Len() > 0 {
+			color := heap.Pop(&colorHeap).(nh.ColorItem).Color
+			colors = append(colors, color)
+		}
+	} else {
+		for i := graph.Blank + 1; i < graph.NumColors; i++ {
+			colors = append(colors, graph.Color(i))
+		}
+	}
+
 	// for each color
-	for color := graph.Color(graph.Blank + 1); int(color) < graph.NumColors; color++ {
+	for _, color := range colors {
 		//can we use it?
 		if node.TakenColors[color] == 0 {
+			//update colors and adj
 			updateColorAndAdj(node, color, h)
 			//proceed with backtrack recursion
 			if colorMapBacktrack(g, height+1, h) {
@@ -132,14 +145,14 @@ func colorMapBacktrack(g graph.Graph, height int, h *nh.NodeHeap) bool {
 
 	// reset color and ajacents
 	if heuristic >= MRVOnly {
-		heap.Push(h, nh.NewNodeItem(node))
+		heap.Push(h, node)
 	}
 	updateColorAndAdj(node, graph.Blank, h)
 	return false
 }
 
 // update node color and cache values for it's adjacents
-func updateColorAndAdj(node *graph.Node, newColor graph.Color, h *nh.NodeHeap) {
+func updateColorAndAdj(node *graph.Node, newColor graph.Color, h *nh.Heap) {
 	prevColor := node.C
 
 	for _, adj := range node.Adj {

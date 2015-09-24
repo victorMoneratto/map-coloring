@@ -14,7 +14,7 @@ type Node struct {
 type Color int
 
 const (
-	Blank Color = iota
+	Blank = iota
 	Blue
 	Yellow
 	Red
