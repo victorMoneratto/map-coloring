@@ -36,6 +36,20 @@ func (n *Node) Connect(dest *Node) {
 	n.Degree++
 }
 
+func (n *Node) NeighborGotColor(c NodeColor) {
+	n.TakenColors[c]++
+	if n.TakenColors[c] == 1 {
+		n.NumTaken++
+	}
+}
+
+func (n *Node) NeighborLostColor(c NodeColor) {
+	n.TakenColors[c]--
+	if n.TakenColors[c] == 0 {
+		n.NumTaken--
+	}
+}
+
 // Type for colors a node can be
 type NodeColor int
 

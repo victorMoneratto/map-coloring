@@ -68,7 +68,7 @@ func (this NodeItem) Less(h Heap, other Heaper) bool {
 	case this.Node.NumTaken < b.Node.NumTaken:
 		return false
 	default:
-		return h.UseDegree && this.Node.Degree > b.Node.Degree
+		return h.UseDegree && this.Node.Degree < b.Node.Degree
 	}
 }
 

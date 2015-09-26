@@ -9,8 +9,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
-	"github.com/davecheney/profile"
 	"github.com/victormoneratto/map-coloring/graph"
 	nh "github.com/victormoneratto/map-coloring/heap"
 )
@@ -21,25 +21,17 @@ const (
 	FCOnly
 	FCandMRV
 	FCandMRVandDegree
-	FCandMRVandDegreeAndLCV
 )
 
 var Heuristic struct {
-	MRV, FC, Degree, LCV bool
+	MRV, FC, Degree bool
 }
 
 func main() {
-	// Profiler settings
-	cfg := profile.Config{ProfilePath: ".",
-		CPUProfile: true,
-		// MemProfile: true,
-	}
-	defer profile.Start(&cfg).Stop()
-
 	// Heuristic level flag
 	heuristicString := flag.String("heuristic", "a", "a, b, c or d")
 	// Input file flag
-	inputFile := flag.String("file", "", "filename of input file, standard input for default")
+	inputFile := flag.String("file", "input/usa.in", "filename of input file, standard input for default")
 	flag.Parse()
 
 	// Open file if specified, use stdin otherwise
@@ -68,8 +60,10 @@ func main() {
 	g := graph.NewGraph(len(graphDescription))
 	populateGraph(&g, graphDescription)
 
-	// Perform search
+	start := time.Now()
 	if colorMap(g) {
+		elapsed := time.Now().Sub(start)
+		fmt.Println(elapsed)
 		for _, node := range g {
 			fmt.Println(node.Name()+":", node.Color.String()+".")
 		}
@@ -82,9 +76,6 @@ func main() {
 func parseHeuristic(input string) {
 	firstChar := input[0]
 	switch {
-	case firstChar == FCandMRVandDegreeAndLCV:
-		Heuristic.LCV = true
-		fallthrough
 	case firstChar == FCandMRVandDegree:
 		Heuristic.Degree = true
 		fallthrough
@@ -136,10 +127,8 @@ func colorMap(g graph.Graph) bool {
 	ColorsCache.Colors = make([][]graph.NodeColor, len(g))
 	for i := range g {
 		ColorsCache.Colors[i] = make([]graph.NodeColor, 0, graph.NumColors-1)
-		if !Heuristic.LCV {
-			for color := graph.Blank + 1; color < graph.NumColors; color++ {
-				ColorsCache.Colors[i] = append(ColorsCache.Colors[i], graph.NodeColor(color))
-			}
+		for color := graph.Blank + 1; color < graph.NumColors; color++ {
+			ColorsCache.Colors[i] = append(ColorsCache.Colors[i], graph.NodeColor(color))
 		}
 	}
 
@@ -150,6 +139,8 @@ func colorMap(g graph.Graph) bool {
 var ColorsCache struct {
 	Colors [][]graph.NodeColor
 }
+
+var assignments int
 
 // Graph coloring backtrack,
 // search heuristics are set based on heuristc flag
@@ -169,16 +160,6 @@ func colorMapBacktrack(g graph.Graph, height int, h *nh.Heap) bool {
 	}
 
 	colors := ColorsCache.Colors[height]
-	// If using LCV order colors properly
-	if Heuristic.LCV {
-		colorHeap := nh.NewColorHeap(currNode)
-		for colorHeap.Len() > 0 {
-			color := heap.Pop(&colorHeap).(nh.ColorItem).Color
-			colors = append(colors, color)
-		}
-		// Reset cache of colors
-		ColorsCache.Colors[height] = ColorsCache.Colors[height][0:0]
-	}
 
 	for _, color := range colors {
 		// Is this color avaliable for use?
@@ -189,6 +170,7 @@ func colorMapBacktrack(g graph.Graph, height int, h *nh.Heap) bool {
 			// Forward Checking
 			if Heuristic.FC {
 				if impossible {
+					resetColorAndAdj(currNode)
 					continue
 				}
 			}
@@ -197,6 +179,7 @@ func colorMapBacktrack(g graph.Graph, height int, h *nh.Heap) bool {
 			if colorMapBacktrack(g, height+1, h) {
 				return true
 			}
+			resetColorAndAdj(currNode)
 		}
 	}
 
@@ -204,56 +187,29 @@ func colorMapBacktrack(g graph.Graph, height int, h *nh.Heap) bool {
 	if Heuristic.MRV {
 		heap.Push(h, nh.NewNodeItem(currNode))
 	}
-	// Reset color and warn ajacents
-	updateColorAndAdj(currNode, graph.Blank, h)
 	return false
+}
+
+func resetColorAndAdj(node *graph.Node) {
+	for _, adj := range node.Adj {
+		adj.NeighborLostColor(node.Color)
+	}
+	node.Color = graph.Blank
 }
 
 // Update node color and udpate colors info on adjacents
 func updateColorAndAdj(node *graph.Node, newColor graph.NodeColor, h *nh.Heap) bool {
-	prevColor := node.Color
-
-	impossible := false
-
-	// Warn node adjacents that node is of a new color
+	anyZeroed := false
 	for _, adj := range node.Adj {
-		if Heuristic.MRV || Heuristic.LCV {
-			impossible = impossible || updateTakenColors(adj, prevColor, newColor)
-		}
-		adj.TakenColors[newColor]++
-		adj.TakenColors[prevColor]--
+		adj.NeighborGotColor(newColor)
+		anyZeroed = anyZeroed || adj.NumTaken == graph.NumColors-1
 	}
-
-	node.Color = newColor
-
-	// Heapify heap again
-	// TODO(victor): Should we call heap.Fix for each updated adjacent instead?
 	if Heuristic.MRV {
 		heap.Init(h)
 	}
+	node.Color = newColor
 
-	return impossible
-}
-
-// Update node info about a neighbor changing color
-// returns wether all node colors have been taken
-func updateTakenColors(adj *graph.Node, prevColor, newColor graph.NodeColor) bool {
-	// If node was blank
-	if prevColor == graph.Blank {
-		// Node is the only neighbor this color
-		if adj.TakenColors[newColor] == 0 {
-			adj.NumTaken++
-		}
-
-		// If node is losing color
-	} else if newColor == graph.Blank {
-		// Node was the only neighbor that color
-		if adj.TakenColors[prevColor] == 1 {
-			adj.NumTaken--
-		}
-	}
-
-	return adj.NumTaken == graph.NumColors-1
+	return anyZeroed
 }
 
 // Parse input file to [][]string of the format:

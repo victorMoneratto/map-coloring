@@ -8,11 +8,6 @@ import (
 )
 
 func TestParseInputFile(t *testing.T) {
-	Heuristic.MRV = true
-	Heuristic.FC = true
-	Heuristic.Degree = true
-	Heuristic.LCV = true
-
 	file, err := os.Open("input/brasil.in")
 	if err != nil {
 		t.Error(err)
@@ -37,8 +32,8 @@ func TestParseInputFile(t *testing.T) {
 func TestColorMap(t *testing.T) {
 	Heuristic.MRV = true
 	Heuristic.FC = true
-	Heuristic.Degree = true
-	Heuristic.LCV = true
+	Heuristic.Degree = false
+	Heuristic.LCV = false
 
 	file, err := os.Open("input/brasil.in")
 	if err != nil {
