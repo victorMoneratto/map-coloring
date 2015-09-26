@@ -6,72 +6,10 @@ import (
 	"github.com/victormoneratto/map-coloring/graph"
 )
 
+// Type for heap for Heaper interface
 type Heap struct {
 	Items     []Heaper
 	UseDegree bool
-}
-
-type Heaper interface {
-	Less(h Heap, other Heaper) bool
-}
-
-type NodeItem struct {
-	Node *graph.Node
-}
-
-func NewNodeItem(n *graph.Node) NodeItem {
-	return NodeItem{Node: n}
-}
-
-func (this NodeItem) Less(h Heap, other Heaper) bool {
-	b := other.(NodeItem)
-	switch {
-	case this.Node.NumTaken > b.Node.NumTaken:
-		return true
-	case this.Node.NumTaken < b.Node.NumTaken:
-		return false
-	default:
-		return h.UseDegree && this.Node.Degree > b.Node.Degree
-	}
-}
-
-func NewNodeHeap(initialCap int, useDegree bool) Heap {
-	return Heap{
-		Items:     make([]Heaper, 0, initialCap),
-		UseDegree: useDegree,
-	}
-}
-
-type ColorItem struct {
-	Color    graph.Color
-	Priority int
-}
-
-func (this ColorItem) Less(h Heap, other Heaper) bool {
-	b := other.(ColorItem)
-	return this.Priority > b.Priority
-}
-
-func NewColorHeap(src *graph.Node) Heap {
-	items := make([]int, graph.NumColors-1)
-	for _, adj := range src.Adj {
-		if adj.C == graph.Blank {
-			for i := graph.Blank + 1; i < graph.NumColors; i++ {
-				items[i-1] += adj.TakenColors[i]
-			}
-		}
-	}
-
-	h := Heap{Items: make([]Heaper, graph.NumColors-1)}
-	for i := int(graph.Blank + 1); i < graph.NumColors; i++ {
-		h.Items[i-1] = ColorItem{
-			Color:    graph.Color(i),
-			Priority: items[i-1],
-		}
-	}
-
-	heap.Init(&h)
-	return h
 }
 
 func (h Heap) Len() int {
@@ -99,4 +37,70 @@ func (h *Heap) Pop() interface{} {
 	h.Items = old[:n-1]
 
 	return x
+}
+
+// Heaper interface
+type Heaper interface {
+	Less(h Heap, other Heaper) bool
+}
+
+// Node Item for heap (implements Heaper)
+type NodeItem struct {
+	*graph.Node
+}
+
+func NewNodeHeap(initialCap int, useDegree bool) Heap {
+	return Heap{
+		Items:     make([]Heaper, 0, initialCap),
+		UseDegree: useDegree,
+	}
+}
+
+func NewNodeItem(n *graph.Node) NodeItem {
+	return NodeItem{n}
+}
+
+func (this NodeItem) Less(h Heap, other Heaper) bool {
+	b := other.(NodeItem)
+	switch {
+	case this.Node.NumTaken > b.Node.NumTaken:
+		return true
+	case this.Node.NumTaken < b.Node.NumTaken:
+		return false
+	default:
+		return h.UseDegree && this.Node.Degree > b.Node.Degree
+	}
+}
+
+// Node Item for Color
+type ColorItem struct {
+	Color    graph.NodeColor
+	Priority int
+}
+
+func NewColorHeap(src *graph.Node) Heap {
+	h := Heap{Items: make([]Heaper, graph.NumColors-1)}
+	for i := int(graph.Blank + 1); i < graph.NumColors; i++ {
+		h.Items[i-1] = ColorItem{
+			Color: graph.NodeColor(i),
+		}
+	}
+
+	for _, adj := range src.Adj {
+		if adj.Color == graph.Blank {
+			for i := graph.Blank + 1; i < graph.NumColors; i++ {
+				priority := h.Items[i-1].(ColorItem)
+				priority.Priority += adj.TakenColors[i]
+				h.Items[i-1] = priority
+			}
+		}
+	}
+
+	heap.Init(&h)
+	return h
+}
+
+func (this ColorItem) Less(h Heap, other Heaper) bool {
+	b := other.(ColorItem)
+	return this.Priority > b.Priority
 }

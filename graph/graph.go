@@ -1,17 +1,43 @@
 package graph
 
+// Type for graph
 type Graph []*Node
 
+func NewGraph(initialCount int) Graph {
+	return make([]*Node, 0, initialCount)
+}
+
+// Type for node in graph
 type Node struct {
 	name        string
-	C           Color
+	Color       NodeColor
 	Adj         []*Node
 	TakenColors []int
 	NumTaken    int
 	Degree      int
 }
 
-type Color int
+func NewNode(name string) *Node {
+	return &Node{name: name, TakenColors: make([]int, NumColors)}
+}
+
+func (n Node) Name() string {
+	return n.name
+}
+
+// Connect nodes in graph
+func (n *Node) Connect(dest *Node) {
+	const initialCap int = 3
+	if n.Adj == nil {
+		n.Adj = make([]*Node, 0, initialCap)
+	}
+
+	n.Adj = append(n.Adj, dest)
+	n.Degree++
+}
+
+// Type for colors a node can be
+type NodeColor int
 
 const (
 	Blank = iota
@@ -31,28 +57,7 @@ var ColorNames = [...]string{
 
 const NumColors = len(ColorNames)
 
-func (c Color) String() string {
+// Implement fmt.Stringer interface
+func (c NodeColor) String() string {
 	return ColorNames[c]
-}
-
-func NewNode(name string) *Node {
-	return &Node{name: name, TakenColors: make([]int, NumColors)}
-}
-
-func (n Node) Name() string {
-	return n.name
-}
-
-func (n *Node) Connect(dest *Node) {
-	const initialCap int = 3
-	if n.Adj == nil {
-		n.Adj = make([]*Node, 0, initialCap)
-	}
-
-	n.Adj = append(n.Adj, dest)
-	n.Degree++
-}
-
-func NewGraph(initialCount int) Graph {
-	return make([]*Node, 0, initialCount)
 }

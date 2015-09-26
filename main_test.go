@@ -8,12 +8,16 @@ import (
 )
 
 func TestParseInputFile(t *testing.T) {
-	heuristic = MRVandDegree
+	Heuristic.MRV = true
+	Heuristic.FC = true
+	Heuristic.Degree = true
+	Heuristic.LCV = true
+
 	file, err := os.Open("input/brasil.in")
 	if err != nil {
 		t.Error(err)
 	}
-	descs := parseInputFile(file)
+	descs, _ := parseInputFile(file)
 	if descs[0][0] != "Acre" {
 		t.Error("Should be Acre, was", descs[0][0])
 	}
@@ -31,19 +35,23 @@ func TestParseInputFile(t *testing.T) {
 }
 
 func TestColorMap(t *testing.T) {
-	heuristic = MRVandDegree
+	Heuristic.MRV = true
+	Heuristic.FC = true
+	Heuristic.Degree = true
+	Heuristic.LCV = true
+
 	file, err := os.Open("input/brasil.in")
 	if err != nil {
 		t.Error(err)
 	}
-	descs := parseInputFile(file)
+	descs, _ := parseInputFile(file)
 	g := graph.NewGraph(len(descs))
 	populateGraph(&g, descs)
 
 	if colorMap(g) {
 		for _, node := range g {
 			for _, adj := range node.Adj {
-				if node.C == adj.C {
+				if node.Color == adj.Color {
 					t.Error("Adjacent nodes have the same color:", node, adj)
 				}
 			}
