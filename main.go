@@ -9,7 +9,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/victormoneratto/map-coloring/graph"
 	nh "github.com/victormoneratto/map-coloring/heap"
@@ -60,10 +59,10 @@ func main() {
 	g := graph.NewGraph(len(graphDescription))
 	populateGraph(&g, graphDescription)
 
-	start := time.Now()
+	// start := time.Now()
 	if colorMap(g) {
-		elapsed := time.Now().Sub(start)
-		fmt.Println(elapsed)
+		// elapsed := time.Now().Sub(start)
+		// fmt.Println(elapsed)
 		for _, node := range g {
 			fmt.Println(node.Name()+":", node.Color.String()+".")
 		}
@@ -248,8 +247,9 @@ func parseInputFile(file *os.File) ([][]string, string) {
 		// Read line and split by ': or ',' or '.'
 		line, _ = buffer.ReadString('\n')
 		fields := strings.FieldsFunc(line, func(r rune) bool {
-			return r == ',' || r == ':' || r == '.' || r == '\n'
+			return r == ',' || r == ':' || r == '.' || r == '\n' || r == '\r'
 		})
+		// fmt.Println(fields)
 
 		// Allocate string slice and store elements from the line
 		ret[i] = make([]string, 0, len(fields))
